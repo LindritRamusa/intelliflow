@@ -31,7 +31,7 @@ const isActive = (item: { to: string; exact: boolean }) => {
       </div>
       <div class="min-w-0">
         <p class="text-sm font-semibold text-white truncate">IntelliFlow</p>
-        <p class="text-[20px] font-medium uppercase tracking-widest text-violet-400">AI Platform</p>
+        <p class="text-[10px] font-medium uppercase tracking-widest text-violet-400">AI Platform</p>
       </div>
     </div>
 

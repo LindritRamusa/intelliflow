@@ -8,9 +8,9 @@ Enterprise-grade AI automation SaaS for intelligent workflows, copilots, analyti
 |---|---|
 | Frontend | Nuxt 3, TypeScript, Tailwind CSS, Pinia, Vue-ChartJS |
 | Backend | Laravel 11, PHP 8.3 |
-| Database | PostgreSQL via Supabase |
+| Database | PostgreSQL 16 |
 | AI | OpenAI API, Embeddings, Semantic Search |
-| Auth | Laravel Sanctum + Supabase Auth |
+| Auth | Laravel Sanctum |
 
 ## Structure
 

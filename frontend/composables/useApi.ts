@@ -23,10 +23,13 @@ export const useApi = () => {
     })
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`)
+      const data = await response.json().catch(() => ({})) as Record<string, unknown>
+      const errors = data.errors as Record<string, string[]> | undefined
+      const firstError = errors ? Object.values(errors)[0]?.[0] : undefined
+      throw new Error(firstError ?? (data.message as string) ?? `Error ${response.status}`)
     }
 
-    return response.json()
+    return response.json() as Promise<ApiResponse<T>>
   }
 
   const get = <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' })
@@ -37,7 +40,10 @@ export const useApi = () => {
   const put = <T>(endpoint: string, body: unknown) =>
     request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) })
 
+  const patch = <T>(endpoint: string, body?: unknown) =>
+    request<T>(endpoint, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined })
+
   const del = <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' })
 
-  return { get, post, put, del }
+  return { get, post, put, patch, del }
 }

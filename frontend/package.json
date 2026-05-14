@@ -12,6 +12,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@nuxtjs/color-mode": "^3.5.2",
     "@nuxtjs/tailwindcss": "^6.13.2",
     "@pinia/nuxt": "^0.9.0",

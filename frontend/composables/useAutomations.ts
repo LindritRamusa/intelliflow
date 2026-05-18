@@ -35,6 +35,13 @@ export const useAutomations = () => {
     return res.data
   }
 
+  const updateAutomation = async (id: string, payload: Partial<CreateAutomationPayload>): Promise<Automation> => {
+    const res = await api.put<Automation>(`/automations/${id}`, payload)
+    const idx = automations.value.findIndex((a) => a.id === id)
+    if (idx >= 0) automations.value[idx] = res.data
+    return res.data
+  }
+
   const deleteAutomation = async (id: string): Promise<void> => {
     await api.del(`/automations/${id}`)
     automations.value = automations.value.filter((a) => a.id !== id)
@@ -48,6 +55,7 @@ export const useAutomations = () => {
     error,
     fetchAutomations,
     createAutomation,
+    updateAutomation,
     toggleAutomation,
     deleteAutomation,
   }

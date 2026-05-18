@@ -45,5 +45,15 @@ export const useApi = () => {
 
   const del = <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' })
 
-  return { get, post, put, patch, del }
+  const api = <T>(
+    endpoint: string,
+    options: { method?: string; body?: unknown } = {},
+  ): Promise<ApiResponse<T>> => {
+    return request<T>(endpoint, {
+      method: options.method ?? 'GET',
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    })
+  }
+
+  return { get, post, put, patch, del, api }
 }

@@ -3,6 +3,8 @@ export type WorkflowStatus = 'active' | 'paused' | 'draft'
 export type AutomationStatus = 'running' | 'completed' | 'failed' | 'paused'
 export type NotificationType = 'info' | 'warning' | 'error' | 'success'
 export type OrgPlan = 'starter' | 'professional' | 'enterprise'
+export type CandidateStatus = 'pending' | 'review' | 'shortlisted' | 'interview' | 'rejected' | 'hired'
+export type AiRecommendation = 'shortlist' | 'review' | 'reject'
 
 export interface User {
   id: string
@@ -57,7 +59,7 @@ export interface Automation {
   trigger_type: string
   actionType: string
   action_type: string
-  config?: Record<string, unknown> | null
+  config?: AutomationConfig | null
   isActive: boolean
   is_active: boolean
   lastExecutedAt?: string | null
@@ -66,6 +68,84 @@ export interface Automation {
   execution_count?: number
   createdAt?: string
   created_at?: string
+}
+
+export interface RuleCondition {
+  id: string
+  field: string
+  operator: 'equals' | 'not_equals' | 'contains' | 'greater_than' | 'less_than' | 'is_empty' | 'is_not_empty'
+  value: string
+}
+
+export interface RuleAction {
+  id: string
+  type: 'send_notification' | 'update_field' | 'send_email' | 'trigger_webhook' | 'create_task' | 'add_tag'
+  config: Record<string, string>
+}
+
+export interface AutomationRules {
+  conditions: RuleCondition[]
+  actions: RuleAction[]
+  logic: 'AND' | 'OR'
+}
+
+export interface AutomationConfig {
+  rules?: AutomationRules
+  schedule?: string
+  webhook_url?: string
+  email_to?: string
+  [key: string]: unknown
+}
+
+export interface Candidate {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  applied_role: string
+  cv_text: string | null
+  ai_score: number | null
+  ai_analysis: string | null
+  ai_strengths: string[] | null
+  ai_weaknesses: string[] | null
+  skills: string[] | null
+  status: CandidateStatus
+  notes: string | null
+  source: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CvAnalysisResult {
+  score: number
+  strengths: string[]
+  weaknesses: string[]
+  skills: string[]
+  assessment: string
+  recommendation: AiRecommendation
+}
+
+export interface RecruitmentStats {
+  total: number
+  byStatus: Record<CandidateStatus, number>
+  avgScore: number
+  analyzed: number
+}
+
+export interface Article {
+  id: string
+  title: string
+  slug: string
+  content: string
+  excerpt: string | null
+  category: string
+  views: number
+  published: boolean
+  publishedAt: string | null
+  createdAt: string
+  updatedAt: string
+  updatedAgo: string | null
+  author: { id: string; name: string } | null
 }
 
 export interface AiLog {
@@ -155,6 +235,25 @@ export interface CreateAutomationPayload {
   workflow_id?: string | null
   trigger_type: string
   action_type: string
-  config?: Record<string, unknown>
+  config?: AutomationConfig
   is_active?: boolean
+}
+
+export interface CreateCandidatePayload {
+  name: string
+  email?: string
+  phone?: string
+  applied_role: string
+  cv_text?: string
+  skills?: string[]
+  source?: string
+  notes?: string
+}
+
+export interface CreateArticlePayload {
+  title: string
+  content: string
+  excerpt?: string
+  category: string
+  published?: boolean
 }

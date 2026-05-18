@@ -1,7 +1,5 @@
 import OpenAI from 'openai'
 
-// OpenRouter is OpenAI-compatible — no extra packages needed.
-// Free models: meta-llama/llama-3.3-70b-instruct:free, google/gemma-3-27b-it:free, deepseek/deepseek-r1:free
 const FREE_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'
 
 export default defineEventHandler(async (event) => {

@@ -1,100 +1,197 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'dashboard', middleware: 'auth' })
+import type { Article, CreateArticlePayload } from '~/types'
+
+definePageMeta({ layout: 'dashboard' })
+
+const { articles, categories, isLoading, error, total, fetchArticles, fetchCategories, createArticle, updateArticle, deleteArticle, togglePublish } = useArticles()
 
 const searchQuery = ref('')
-const selectedCategory = ref('All')
+const activeCategory = ref('All')
+const showEditorModal = ref(false)
+const editingArticle = ref<Article | null>(null)
+const viewingArticle = ref<Article | null>(null)
+const confirmDeleteId = ref<string | null>(null)
 
-const categories = ['All', 'Processes', 'HR Policies', 'Technical', 'Onboarding', 'Security']
+let searchTimer: ReturnType<typeof setTimeout>
+const handleSearch = () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => fetchArticles({ search: searchQuery.value, category: activeCategory.value }), 350)
+}
 
-const articles = ref([
-  { id: '1', title: 'Employee Onboarding Process', category: 'Onboarding', excerpt: 'Step-by-step guide for onboarding new team members, including account setup, tool access, and first-week schedule.', updatedAt: '2 days ago', views: 142 },
-  { id: '2', title: 'Data Security & Compliance Guidelines', category: 'Security', excerpt: 'Company policies on data handling, access control, GDPR compliance, and incident reporting procedures.', updatedAt: '1 week ago', views: 89 },
-  { id: '3', title: 'Workflow Automation Best Practices', category: 'Technical', excerpt: 'Guidelines for building reliable, maintainable workflow automations using IntelliFlow. Includes naming conventions and testing strategies.', updatedAt: '3 days ago', views: 203 },
-  { id: '4', title: 'Performance Review Framework', category: 'HR Policies', excerpt: 'How to conduct quarterly performance reviews, set goals, and provide constructive feedback using our review template.', updatedAt: '2 weeks ago', views: 67 },
-  { id: '5', title: 'API Integration Guide', category: 'Technical', excerpt: 'How to connect third-party services via webhooks and REST APIs. Includes authentication, rate limiting, and error handling.', updatedAt: '5 days ago', views: 178 },
-  { id: '6', title: 'Incident Response Procedure', category: 'Processes', excerpt: 'Documented process for identifying, escalating, and resolving operational incidents within defined SLAs.', updatedAt: '1 month ago', views: 45 },
-])
+const handleCategoryFilter = (cat: string) => {
+  activeCategory.value = cat
+  fetchArticles({ search: searchQuery.value, category: cat })
+}
 
-const filteredArticles = computed(() => {
-  let result = articles.value
-  if (selectedCategory.value !== 'All') {
-    result = result.filter((a) => a.category === selectedCategory.value)
+const handleOpenEditor = (article?: Article) => {
+  editingArticle.value = article ?? null
+  showEditorModal.value = true
+}
+
+const handleEditorSubmit = async (payload: CreateArticlePayload) => {
+  if (editingArticle.value) {
+    await updateArticle(editingArticle.value.id, payload)
+  } else {
+    await createArticle(payload)
   }
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
-    result = result.filter((a) => a.title.toLowerCase().includes(q) || a.excerpt.toLowerCase().includes(q))
-  }
-  return result
+  showEditorModal.value = false
+  editingArticle.value = null
+  fetchCategories()
+}
+
+const handleTogglePublish = async (article: Article) => {
+  await togglePublish(article)
+}
+
+const handleDelete = async () => {
+  if (!confirmDeleteId.value) return
+  await deleteArticle(confirmDeleteId.value)
+  confirmDeleteId.value = null
+}
+
+const publishedCount = computed(() => articles.value.filter(a => a.published).length)
+const draftCount = computed(() => articles.value.filter(a => !a.published).length)
+const totalViews = computed(() => articles.value.reduce((sum, a) => sum + (a.views ?? 0), 0))
+
+onMounted(() => {
+  fetchArticles()
+  fetchCategories()
 })
 </script>
 
 <template>
-  <div>
-    <PageHeader title="Knowledge Base" description="Company documentation with AI-powered search">
-      <button class="btn-primary text-xs">
-        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        New Article
-      </button>
+  <div class="p-6 space-y-6">
+    <PageHeader title="Knowledge Base" description="Create and manage your organization's knowledge articles">
+      <template #actions>
+        <button
+          class="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors"
+          @click="handleOpenEditor()"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Article
+        </button>
+      </template>
     </PageHeader>
 
-    <!-- Search -->
-    <div class="flex items-center gap-2 bg-surface-700 border border-surface-600 rounded-xl px-4 py-3 mb-5 focus-within:border-brand-500 transition-colors">
-      <svg class="h-4 w-4 text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-      </svg>
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="Search documentation with AI semantic search..."
-        class="bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none flex-1"
-      />
-      <span class="text-[10px] text-slate-600 hidden sm:block">Powered by AI embeddings</span>
+    <div class="grid grid-cols-3 gap-4">
+      <KpiCard title="Total Articles" :value="total" icon="📄" />
+      <KpiCard title="Published" :value="publishedCount" icon="✅" />
+      <KpiCard title="Total Views" :value="totalViews" icon="👁️" />
     </div>
 
-    <!-- Categories -->
-    <div class="flex items-center gap-2 mb-5 flex-wrap">
-      <button
-        v-for="cat in categories"
-        :key="cat"
-        class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
-        :class="selectedCategory === cat ? 'bg-brand-600 text-white' : 'bg-surface-700 border border-surface-600 text-slate-400 hover:text-slate-200'"
-        @click="selectedCategory = cat"
-      >
-        {{ cat }}
-      </button>
-    </div>
-
-    <!-- Articles grid -->
-    <div v-if="filteredArticles.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div
-        v-for="article in filteredArticles"
-        :key="article.id"
-        class="card hover:border-brand-500/30 hover:bg-surface-700/40 transition-all cursor-pointer flex flex-col gap-3"
-      >
-        <div class="flex items-start justify-between gap-2">
-          <h3 class="text-sm font-semibold text-slate-200 leading-snug">{{ article.title }}</h3>
-          <span class="badge-blue text-[10px] flex-shrink-0">{{ article.category }}</span>
+    <div class="bg-[#141824] border border-white/[0.06] rounded-xl">
+      <div class="p-4 border-b border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div class="relative flex-1 min-w-0">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500/50 transition-colors"
+            placeholder="Search articles..."
+            @input="handleSearch"
+          />
         </div>
-        <p class="text-xs text-slate-500 leading-relaxed line-clamp-3 flex-1">{{ article.excerpt }}</p>
-        <div class="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-surface-600">
-          <span>Updated {{ article.updatedAt }}</span>
-          <span class="flex items-center gap-1">
-            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        <div class="flex items-center gap-1 overflow-x-auto">
+          <button
+            v-for="cat in categories"
+            :key="cat"
+            :class="['px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors', activeCategory === cat ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5']"
+            @click="handleCategoryFilter(cat)"
+          >
+            {{ cat }}
+          </button>
+        </div>
+      </div>
+
+      <div class="p-4">
+        <LoadingSpinner v-if="isLoading" class="py-12" />
+
+        <div v-else-if="error" class="py-12 text-center">
+          <p class="text-red-400 text-sm">{{ error }}</p>
+          <button class="mt-3 text-violet-400 text-sm hover:underline" @click="fetchArticles()">Retry</button>
+        </div>
+
+        <EmptyState
+          v-else-if="articles.length === 0"
+          title="No articles yet"
+          description="Create your first knowledge base article to get started"
+          icon="📝"
+        >
+          <template #action>
+            <button class="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors" @click="handleOpenEditor()">
+              New Article
+            </button>
+          </template>
+        </EmptyState>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <ArticleCard
+            v-for="article in articles"
+            :key="article.id"
+            :article="article"
+            @edit="handleOpenEditor"
+            @delete="confirmDeleteId = $event"
+            @toggle-publish="handleTogglePublish"
+            @view="viewingArticle = $event"
+          />
+        </div>
+
+        <p v-if="articles.length > 0" class="text-xs text-gray-500 text-center mt-4">
+          {{ draftCount }} draft{{ draftCount !== 1 ? 's' : '' }} · {{ publishedCount }} published
+        </p>
+      </div>
+    </div>
+
+    <ArticleEditorModal
+      v-if="showEditorModal"
+      :article="editingArticle"
+      @close="showEditorModal = false; editingArticle = null"
+      @submit="handleEditorSubmit"
+    />
+
+    <div
+      v-if="viewingArticle"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      @click.self="viewingArticle = null"
+    >
+      <div class="bg-[#141824] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto shadow-2xl">
+        <div class="flex items-center justify-between p-6 border-b border-white/[0.06]">
+          <div>
+            <span class="px-2 py-0.5 bg-violet-500/10 border border-violet-500/20 rounded-full text-xs text-violet-400">
+              {{ viewingArticle.category }}
+            </span>
+          </div>
+          <button class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors" @click="viewingArticle = null">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
-            {{ article.views }}
-          </span>
+          </button>
+        </div>
+        <div class="p-6">
+          <h1 class="text-white font-bold text-2xl mb-2">{{ viewingArticle.title }}</h1>
+          <div class="flex items-center gap-4 text-xs text-gray-500 mb-6">
+            <span>By {{ viewingArticle.author?.name ?? 'Unknown' }}</span>
+            <span>{{ viewingArticle.updatedAgo }}</span>
+            <span>{{ viewingArticle.views }} views</span>
+          </div>
+          <div class="prose prose-invert prose-sm max-w-none text-gray-300 leading-relaxed whitespace-pre-wrap">
+            {{ viewingArticle.content }}
+          </div>
         </div>
       </div>
     </div>
 
-    <EmptyState
-      v-else
-      icon="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-      title="No articles found"
-      :description="searchQuery ? 'Try a different search term' : 'Create the first article for your team'"
+    <ConfirmModal
+      v-if="confirmDeleteId"
+      title="Delete Article"
+      description="This will permanently delete the article. This cannot be undone."
+      confirm-label="Delete"
+      @confirm="handleDelete"
+      @cancel="confirmDeleteId = null"
     />
   </div>
 </template>

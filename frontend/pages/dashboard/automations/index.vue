@@ -1,214 +1,257 @@
 <script setup lang="ts">
-import type { CreateAutomationPayload } from '~/types'
+import type { Automation, CreateAutomationPayload, AutomationRules } from '~/types'
 
-definePageMeta({ layout: 'dashboard', middleware: 'auth' })
+definePageMeta({ layout: 'dashboard' })
 
-const { automations, total, isLoading, fetchAutomations, createAutomation, toggleAutomation, deleteAutomation } = useAutomations()
+const { automations, total, isLoading, fetchAutomations, createAutomation, updateAutomation, toggleAutomation, deleteAutomation } = useAutomations()
+
 const showCreateModal = ref(false)
-const isCreating = ref(false)
+const editingAutomation = ref<Automation | null>(null)
 const deleteTarget = ref<string | null>(null)
-const isDeleting = ref(false)
+const activeTab = ref<'list' | 'builder'>('list')
 
-const newForm = reactive<CreateAutomationPayload>({
+const defaultRules: AutomationRules = { conditions: [], actions: [], logic: 'AND' }
+
+const newForm = reactive<CreateAutomationPayload & { rules: AutomationRules }>({
   name: '',
   description: '',
   trigger_type: '',
-  action_type: '',
+  action_type: 'rule_based',
   is_active: false,
+  rules: structuredClone(defaultRules),
 })
 
-const triggerTypes = ['schedule:daily', 'schedule:hourly', 'event:form_submit', 'event:ticket_created', 'event:email_received', 'api:webhook', 'manual']
-const actionTypes = ['send_notification', 'generate_report', 'assign_ticket', 'update_record', 'send_email', 'call_webhook', 'create_task']
+const triggerTypes = [
+  { value: 'schedule:daily', label: 'Daily Schedule' },
+  { value: 'schedule:hourly', label: 'Hourly Schedule' },
+  { value: 'event:form_submit', label: 'Form Submitted' },
+  { value: 'event:ticket_created', label: 'Ticket Created' },
+  { value: 'event:email_received', label: 'Email Received' },
+  { value: 'api:webhook', label: 'Webhook Trigger' },
+  { value: 'manual', label: 'Manual Trigger' },
+]
 
 const handleCreate = async () => {
-  isCreating.value = true
-  try {
-    await createAutomation({ ...newForm })
-    showCreateModal.value = false
-    newForm.name = ''
-    newForm.description = ''
-    newForm.trigger_type = ''
-    newForm.action_type = ''
-  } finally {
-    isCreating.value = false
-  }
+  if (!newForm.name.trim() || !newForm.trigger_type) return
+
+  await createAutomation({
+    name: newForm.name,
+    description: newForm.description,
+    trigger_type: newForm.trigger_type,
+    action_type: 'rule_based',
+    is_active: newForm.is_active,
+    config: { rules: newForm.rules },
+  })
+
+  showCreateModal.value = false
+  Object.assign(newForm, { name: '', description: '', trigger_type: '', is_active: false, rules: structuredClone(defaultRules) })
+}
+
+const handleToggle = async (automation: Automation) => {
+  await toggleAutomation(automation.id)
 }
 
 const handleDelete = async () => {
   if (!deleteTarget.value) return
-  isDeleting.value = true
-  try {
-    await deleteAutomation(deleteTarget.value)
-    deleteTarget.value = null
-  } finally {
-    isDeleting.value = false
-  }
+  await deleteAutomation(deleteTarget.value)
+  deleteTarget.value = null
 }
 
-onMounted(() => fetchAutomations())
+const handleEditRules = (automation: Automation) => {
+  editingAutomation.value = automation
+  activeTab.value = 'builder'
+}
+
+const editRules = computed({
+  get: () => (editingAutomation.value?.config?.rules ?? defaultRules) as AutomationRules,
+  set: async (rules: AutomationRules) => {
+    if (!editingAutomation.value) return
+    await updateAutomation(editingAutomation.value.id, {
+      config: { ...editingAutomation.value.config, rules },
+    })
+    editingAutomation.value = {
+      ...editingAutomation.value,
+      config: { ...editingAutomation.value.config, rules },
+    }
+  },
+})
+
+const statusDotClass = (automation: Automation) => {
+  if (!automation.is_active) return 'bg-gray-600'
+  return automation.status === 'running' ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400'
+}
+
+onMounted(fetchAutomations)
 </script>
 
 <template>
-  <div>
-    <PageHeader title="Automations" :description="`${total} total automations`">
-      <button class="btn-primary text-xs" @click="showCreateModal = true">
-        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        New Automation
-      </button>
+  <div class="p-6 space-y-6">
+    <PageHeader title="Automations" description="Configure automated workflows with visual rule builder">
+      <template #actions>
+        <button
+          class="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors"
+          @click="showCreateModal = true"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Automation
+        </button>
+      </template>
     </PageHeader>
 
-    <!-- Loading -->
-    <div v-if="isLoading" class="space-y-3">
-      <div v-for="i in 4" :key="i" class="card animate-pulse">
-        <div class="flex items-center gap-4">
-          <div class="h-9 w-9 bg-surface-700 rounded-xl flex-shrink-0" />
-          <div class="flex-1 space-y-1.5">
-            <div class="h-4 bg-surface-700 rounded w-1/3" />
-            <div class="h-3 bg-surface-700 rounded w-2/3" />
+    <div class="flex items-center gap-1 bg-[#141824] border border-white/[0.06] rounded-xl p-1 w-fit">
+      <button
+        :class="['px-4 py-2 rounded-lg text-sm transition-colors', activeTab === 'list' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white']"
+        @click="activeTab = 'list'"
+      >
+        All Automations
+      </button>
+      <button
+        :class="['px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-1.5', activeTab === 'builder' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white']"
+        @click="activeTab = 'builder'"
+      >
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Rule Builder
+        <span v-if="editingAutomation" class="px-1.5 py-0.5 bg-violet-400/20 rounded text-xs text-violet-300">active</span>
+      </button>
+    </div>
+
+    <div v-if="activeTab === 'list'">
+      <LoadingSpinner v-if="isLoading" class="py-12" />
+
+      <EmptyState
+        v-else-if="automations.length === 0"
+        title="No automations yet"
+        description="Create your first automation with the rule builder"
+        icon="⚡"
+      >
+        <template #action>
+          <button class="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors" @click="showCreateModal = true">
+            New Automation
+          </button>
+        </template>
+      </EmptyState>
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="automation in automations"
+          :key="automation.id"
+          class="bg-[#141824] border border-white/[0.06] rounded-xl p-5 flex items-center gap-4 hover:border-white/10 transition-colors group"
+        >
+          <div class="flex items-center gap-3 flex-1 min-w-0">
+            <div :class="['w-2 h-2 rounded-full shrink-0', statusDotClass(automation)]" />
+            <div class="min-w-0">
+              <p class="text-white font-medium text-sm truncate">{{ automation.name }}</p>
+              <p class="text-gray-500 text-xs mt-0.5 truncate">
+                {{ automation.trigger_type ?? automation.triggerType }}
+                <span class="mx-1">→</span>
+                {{ (automation.config?.rules as AutomationRules)?.actions?.length ?? 0 }} action(s)
+              </p>
+            </div>
           </div>
-          <div class="h-7 w-16 bg-surface-700 rounded" />
-        </div>
-      </div>
-    </div>
 
-    <!-- Table -->
-    <div v-else-if="automations.length" class="card overflow-hidden p-0">
-      <table class="w-full">
-        <thead>
-          <tr class="border-b border-surface-600">
-            <th class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider px-4 py-3">Automation</th>
-            <th class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider px-4 py-3 hidden md:table-cell">Trigger</th>
-            <th class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider px-4 py-3 hidden lg:table-cell">Action</th>
-            <th class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider px-4 py-3">Status</th>
-            <th class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider px-4 py-3 hidden sm:table-cell">Executions</th>
-            <th class="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-surface-700">
-          <tr
-            v-for="automation in automations"
-            :key="automation.id"
-            class="hover:bg-surface-700/40 transition-colors"
-          >
-            <td class="px-4 py-3">
-              <p class="text-sm font-medium text-slate-200">{{ automation.name }}</p>
-              <p v-if="automation.description" class="text-xs text-slate-500 truncate max-w-xs">{{ automation.description }}</p>
-            </td>
-            <td class="px-4 py-3 hidden md:table-cell">
-              <span class="text-xs font-mono text-slate-400">{{ automation.trigger_type }}</span>
-            </td>
-            <td class="px-4 py-3 hidden lg:table-cell">
-              <span class="text-xs font-mono text-slate-400">{{ automation.action_type }}</span>
-            </td>
-            <td class="px-4 py-3">
-              <StatusBadge :status="automation.is_active ? 'active' : 'paused'" dot />
-            </td>
-            <td class="px-4 py-3 hidden sm:table-cell">
-              <span class="text-xs text-slate-400 tabular-nums">{{ automation.execution_count ?? 0 }}</span>
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex items-center gap-1 justify-end">
-                <button
-                  class="p-1.5 rounded-lg text-xs transition-colors"
-                  :class="automation.is_active ? 'text-amber-400 hover:bg-amber-500/10' : 'text-emerald-400 hover:bg-emerald-500/10'"
-                  :title="automation.is_active ? 'Disable' : 'Enable'"
-                  @click="toggleAutomation(automation.id)"
-                >
-                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path v-if="automation.is_active" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-                <button
-                  class="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                  @click="deleteTarget = automation.id"
-                >
-                  <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <EmptyState
-      v-else
-      icon="M13 10V3L4 14h7v7l9-11h-7z"
-      title="No automations yet"
-      description="Create automations to run tasks automatically based on triggers"
-      action-label="Create Automation"
-      @action="showCreateModal = true"
-    />
-
-    <!-- Create Modal -->
-    <Transition name="fade">
-      <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showCreateModal = false" />
-        <div class="relative glass-panel w-full max-w-lg p-6 shadow-2xl">
-          <div class="flex items-center justify-between mb-5">
-            <h3 class="text-sm font-semibold text-white">Create Automation</h3>
-            <button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-700 transition-colors" @click="showCreateModal = false">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-xs text-gray-500 hidden sm:block">
+              {{ automation.execution_count ?? automation.executionCount ?? 0 }} runs
+            </span>
+            <button
+              class="p-1.5 rounded-lg text-gray-500 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+              title="Edit rules"
+              @click="handleEditRules(automation); activeTab = 'builder'"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+            <button
+              :class="['relative w-10 h-5 rounded-full transition-colors', (automation.is_active ?? automation.isActive) ? 'bg-violet-600' : 'bg-white/10']"
+              @click="handleToggle(automation)"
+            >
+              <div :class="['absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform', (automation.is_active ?? automation.isActive) ? 'translate-x-5' : 'translate-x-0']" />
+            </button>
+            <button
+              class="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              @click="deleteTarget = automation.id"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
               </svg>
             </button>
           </div>
-          <form class="space-y-4" @submit.prevent="handleCreate">
-            <div>
-              <label class="block text-xs font-medium text-slate-300 mb-1.5">Name *</label>
-              <input v-model="newForm.name" type="text" class="input" placeholder="e.g. Daily Digest" required />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-300 mb-1.5">Description</label>
-              <textarea v-model="newForm.description" class="input resize-none" rows="2" />
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Trigger *</label>
-                <select v-model="newForm.trigger_type" class="input" required>
-                  <option value="" disabled>Select trigger</option>
-                  <option v-for="t in triggerTypes" :key="t" :value="t">{{ t }}</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Action *</label>
-                <select v-model="newForm.action_type" class="input" required>
-                  <option value="" disabled>Select action</option>
-                  <option v-for="a in actionTypes" :key="a" :value="a">{{ a }}</option>
-                </select>
-              </div>
-            </div>
-            <div class="flex items-center justify-end gap-2 pt-2">
-              <button type="button" class="btn-secondary text-xs" @click="showCreateModal = false">Cancel</button>
-              <button type="submit" class="btn-primary text-xs" :disabled="isCreating">
-                <LoadingSpinner v-if="isCreating" size="xs" />
-                Create
-              </button>
-            </div>
-          </form>
         </div>
-      </div>
-    </Transition>
 
-    <ConfirmModal
-      :open="!!deleteTarget"
-      title="Delete Automation"
-      description="This will permanently delete this automation."
-      confirm-label="Delete"
-      danger
-      :loading="isDeleting"
-      @confirm="handleDelete"
-      @cancel="deleteTarget = null"
-    />
+        <p class="text-xs text-gray-500 text-center pt-1">{{ total }} automation{{ total !== 1 ? 's' : '' }} total</p>
+      </div>
+    </div>
+
+    <div v-if="activeTab === 'builder'" class="bg-[#141824] border border-white/[0.06] rounded-xl p-6">
+      <div v-if="editingAutomation" class="mb-6">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-white font-semibold">{{ editingAutomation.name }}</h2>
+          <button
+            class="text-xs text-gray-400 hover:text-white transition-colors"
+            @click="editingAutomation = null"
+          >
+            Clear selection
+          </button>
+        </div>
+        <p class="text-gray-400 text-sm">Configure conditions and actions for this automation</p>
+      </div>
+      <div v-else class="mb-6 p-4 bg-blue-500/5 border border-blue-500/15 rounded-lg">
+        <p class="text-blue-300 text-sm">Select an automation from the list to edit its rules, or use the builder to design before creating.</p>
+      </div>
+
+      <RuleBuilder v-model="editRules" />
+
+      <div v-if="editingAutomation" class="mt-6 flex justify-end">
+        <p class="text-xs text-gray-500">Changes are saved automatically</p>
+      </div>
+    </div>
+
+    <div v-if="showCreateModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-[#141824] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div class="flex items-center justify-between p-6 border-b border-white/[0.06]">
+          <h2 class="text-white font-semibold text-lg">New Automation</h2>
+          <button class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors" @click="showCreateModal = false">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <form class="p-6 space-y-4" @submit.prevent="handleCreate">
+          <div>
+            <label class="block text-sm text-gray-300 mb-1.5">Name <span class="text-red-400">*</span></label>
+            <input v-model="newForm.name" type="text" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500/50 transition-colors" placeholder="Automation name" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-300 mb-1.5">Description</label>
+            <input v-model="newForm.description" type="text" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500/50 transition-colors" placeholder="Optional description" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-300 mb-1.5">Trigger <span class="text-red-400">*</span></label>
+            <select v-model="newForm.trigger_type" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500/50 transition-colors">
+              <option value="" class="bg-[#1a1f2e]">Select a trigger</option>
+              <option v-for="t in triggerTypes" :key="t.value" :value="t.value" class="bg-[#1a1f2e]">{{ t.label }}</option>
+            </select>
+          </div>
+          <label class="flex items-center gap-3 cursor-pointer">
+            <div :class="['relative w-11 h-6 rounded-full transition-colors', newForm.is_active ? 'bg-violet-600' : 'bg-white/10']" @click="newForm.is_active = !newForm.is_active">
+              <div :class="['absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform', newForm.is_active ? 'translate-x-5' : 'translate-x-0']" />
+            </div>
+            <span class="text-sm text-gray-300">Activate immediately</span>
+          </label>
+          <div class="flex gap-3 pt-2">
+            <button type="button" class="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-gray-300 text-sm hover:bg-white/[0.08] transition-colors" @click="showCreateModal = false">Cancel</button>
+            <button type="submit" :disabled="!newForm.name.trim() || !newForm.trigger_type" class="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <ConfirmModal v-if="deleteTarget" title="Delete Automation" description="This will permanently delete the automation and its rules." confirm-label="Delete" @confirm="handleDelete" @cancel="deleteTarget = null" />
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease }
-.fade-enter-from, .fade-leave-to { opacity: 0 }
-</style>

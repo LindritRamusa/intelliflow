@@ -1,151 +1,190 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'dashboard', middleware: 'auth' })
+import type { Candidate, CandidateStatus } from '~/types'
 
-const { messages, isStreaming, sendMessage } = useAiChat()
+definePageMeta({ layout: 'dashboard' })
 
-const candidates = ref([
-  { id: '1', name: 'Sarah Chen', role: 'Senior Engineer', score: 94, skills: ['TypeScript', 'React', 'Node.js'], status: 'shortlisted' },
-  { id: '2', name: 'Marcus Weber', role: 'Backend Developer', score: 87, skills: ['PHP', 'Laravel', 'PostgreSQL'], status: 'review' },
-  { id: '3', name: 'Aisha Nkomo', role: 'Full Stack Developer', score: 81, skills: ['Vue.js', 'Python', 'Docker'], status: 'review' },
-  { id: '4', name: 'Liam Thornton', role: 'DevOps Engineer', score: 76, skills: ['Kubernetes', 'AWS', 'Terraform'], status: 'pending' },
-])
+const { candidates, stats, isLoading, isAnalyzing, error, total, fetchCandidates, fetchStats, createCandidate, updateCandidate, deleteCandidate, analyzeCv } = useCandidates()
 
-const statusColors: Record<string, string> = {
-  shortlisted: 'badge-green',
-  review: 'badge-blue',
-  pending: 'badge-amber',
-  rejected: 'badge-red',
-}
+const searchQuery = ref('')
+const activeStatus = ref<string>('all')
+const showAddModal = ref(false)
+const analyzingId = ref<string | null>(null)
+const selectedCandidate = ref<Candidate | null>(null)
+const showAnalysisPanel = ref(false)
+const confirmDeleteId = ref<string | null>(null)
 
-const recruitmentPrompts = [
-  'Generate interview questions for a Senior React Engineer',
-  'What skills should I prioritize for a DevOps role?',
-  'Compare these candidates for cultural fit',
-  'Create an onboarding checklist for a backend developer',
+const statusTabs = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'review', label: 'In Review' },
+  { key: 'shortlisted', label: 'Shortlisted' },
+  { key: 'interview', label: 'Interview' },
+  { key: 'hired', label: 'Hired' },
+  { key: 'rejected', label: 'Rejected' },
 ]
 
-const handleAiQuery = (prompt: string) => {
-  sendMessage(prompt)
+let searchTimer: ReturnType<typeof setTimeout>
+const handleSearchInput = () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => fetchCandidates({ search: searchQuery.value, status: activeStatus.value }), 350)
 }
 
-const cvAnalysisInput = ref('')
-const isAnalyzing = ref(false)
-const analysisResult = ref('')
-
-const handleAnalyzeCV = async () => {
-  if (!cvAnalysisInput.value.trim()) return
-  isAnalyzing.value = true
-  await sendMessage(`Analyze this CV and rate it on a scale of 1-10, listing key strengths and weaknesses:\n\n${cvAnalysisInput.value}`)
-  isAnalyzing.value = false
-  const lastMsg = messages.value.filter(m => m.role === 'assistant').at(-1)
-  if (lastMsg) analysisResult.value = lastMsg.content
+const handleStatusFilter = (status: string) => {
+  activeStatus.value = status
+  fetchCandidates({ search: searchQuery.value, status })
 }
+
+const handleAddCandidate = async (payload: Parameters<typeof createCandidate>[0]) => {
+  const result = await createCandidate(payload)
+  if (result) {
+    showAddModal.value = false
+    fetchStats()
+  }
+}
+
+const handleAnalyze = async (candidate: Candidate) => {
+  analyzingId.value = candidate.id
+  const result = await analyzeCv(candidate)
+  analyzingId.value = null
+  if (result) {
+    const updated = candidates.value.find(c => c.id === candidate.id)
+    if (updated) {
+      selectedCandidate.value = updated
+      showAnalysisPanel.value = true
+    }
+    fetchStats()
+  }
+}
+
+const handleUpdateStatus = async (id: string, status: CandidateStatus) => {
+  await updateCandidate(id, { status })
+  fetchStats()
+}
+
+const handleDelete = async () => {
+  if (!confirmDeleteId.value) return
+  await deleteCandidate(confirmDeleteId.value)
+  confirmDeleteId.value = null
+  fetchStats()
+}
+
+const handleViewCandidate = (candidate: Candidate) => {
+  selectedCandidate.value = candidate
+  if (candidate.ai_score !== null) {
+    showAnalysisPanel.value = true
+  }
+}
+
+onMounted(() => {
+  fetchCandidates()
+  fetchStats()
+})
 </script>
 
 <template>
-  <div>
-    <PageHeader title="Recruitment AI" description="AI-powered candidate screening and hiring intelligence" />
+  <div class="p-6 space-y-6">
+    <PageHeader title="Recruitment AI" description="AI-powered candidate screening and ranking">
+      <template #actions>
+        <button
+          class="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors"
+          @click="showAddModal = true"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Candidate
+        </button>
+      </template>
+    </PageHeader>
 
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-      <!-- Candidate Pipeline -->
-      <div class="xl:col-span-2 space-y-4">
-        <div class="card">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-semibold text-white">Candidate Pipeline</h3>
-            <span class="badge-blue">{{ candidates.length }} candidates</span>
-          </div>
+    <div v-if="stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <KpiCard title="Total Candidates" :value="stats.total" icon="👥" />
+      <KpiCard title="Analyzed" :value="stats.analyzed" icon="🤖" :subtitle="`${stats.total ? Math.round((stats.analyzed / stats.total) * 100) : 0}% of total`" />
+      <KpiCard title="Avg AI Score" :value="stats.avgScore ? `${stats.avgScore}/100` : '—'" icon="⭐" />
+      <KpiCard title="Shortlisted" :value="stats.byStatus?.shortlisted ?? 0" icon="✅" />
+    </div>
 
-          <div class="space-y-3">
-            <div
-              v-for="c in candidates"
-              :key="c.id"
-              class="flex items-center gap-4 p-3 rounded-xl border border-surface-600 bg-surface-700/30 hover:bg-surface-700/50 transition-colors"
-            >
-              <!-- Avatar -->
-              <div class="h-9 w-9 rounded-full bg-brand-600/20 flex items-center justify-center flex-shrink-0">
-                <span class="text-sm font-semibold text-brand-300">{{ c.name.charAt(0) }}</span>
-              </div>
-
-              <!-- Info -->
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <p class="text-sm font-medium text-slate-200">{{ c.name }}</p>
-                  <span :class="statusColors[c.status]">{{ c.status }}</span>
-                </div>
-                <p class="text-xs text-slate-500">{{ c.role }}</p>
-                <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  <span
-                    v-for="skill in c.skills"
-                    :key="skill"
-                    class="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-600 text-slate-400 font-mono"
-                  >
-                    {{ skill }}
-                  </span>
-                </div>
-              </div>
-
-              <!-- Score -->
-              <div class="flex flex-col items-center flex-shrink-0">
-                <div class="text-lg font-bold" :class="c.score >= 90 ? 'text-emerald-400' : c.score >= 80 ? 'text-brand-400' : 'text-amber-400'">
-                  {{ c.score }}
-                </div>
-                <p class="text-[10px] text-slate-500">AI Score</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- CV Analyzer -->
-        <div class="card">
-          <h3 class="text-sm font-semibold text-white mb-1">CV Analyzer</h3>
-          <p class="text-xs text-slate-500 mb-4">Paste a CV below for instant AI analysis and scoring</p>
-
-          <textarea
-            v-model="cvAnalysisInput"
-            class="input resize-none mb-3"
-            rows="5"
-            placeholder="Paste candidate CV text here..."
+    <div class="bg-[#141824] border border-white/[0.06] rounded-xl">
+      <div class="p-4 border-b border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div class="relative flex-1 min-w-0">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500/50 transition-colors"
+            placeholder="Search candidates..."
+            @input="handleSearchInput"
           />
-
+        </div>
+        <div class="flex items-center gap-1 overflow-x-auto">
           <button
-            class="btn-primary text-xs"
-            :disabled="!cvAnalysisInput.trim() || isAnalyzing || isStreaming"
-            @click="handleAnalyzeCV"
+            v-for="tab in statusTabs"
+            :key="tab.key"
+            :class="['px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors', activeStatus === tab.key ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5']"
+            @click="handleStatusFilter(tab.key)"
           >
-            <LoadingSpinner v-if="isAnalyzing" size="xs" />
-            <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            Analyze with AI
+            {{ tab.label }}
           </button>
-
-          <div v-if="analysisResult" class="mt-4 p-4 rounded-xl bg-surface-700/50 border border-brand-500/20">
-            <p class="text-[11px] font-medium text-brand-400 mb-2 uppercase tracking-wider">AI Analysis Result</p>
-            <p class="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{{ analysisResult }}</p>
-          </div>
         </div>
       </div>
 
-      <!-- AI Recruitment Assistant -->
-      <div class="card flex flex-col">
-        <h3 class="text-sm font-semibold text-white mb-1">AI Hiring Assistant</h3>
-        <p class="text-xs text-slate-500 mb-4">Get instant insights on hiring decisions</p>
+      <div class="p-4">
+        <LoadingSpinner v-if="isLoading" class="py-12" />
 
-        <div class="space-y-2 mb-4">
-          <button
-            v-for="prompt in recruitmentPrompts"
-            :key="prompt"
-            class="w-full text-left text-xs px-3 py-2.5 rounded-lg border border-surface-600 bg-surface-700/50 hover:bg-surface-700 hover:border-brand-500/30 text-slate-400 hover:text-slate-200 transition-all"
-            @click="handleAiQuery(prompt)"
-          >
-            {{ prompt }}
-          </button>
+        <div v-else-if="error" class="py-12 text-center">
+          <p class="text-red-400 text-sm">{{ error }}</p>
+          <button class="mt-3 text-violet-400 text-sm hover:underline" @click="fetchCandidates()">Retry</button>
         </div>
 
-        <NuxtLink to="/dashboard/ai-assistant" class="btn-secondary text-xs justify-center mt-auto">
-          Open Full AI Assistant
-        </NuxtLink>
+        <EmptyState
+          v-else-if="candidates.length === 0"
+          title="No candidates yet"
+          description="Add your first candidate to start AI-powered screening"
+          icon="👤"
+        >
+          <template #action>
+            <button class="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white text-sm font-medium transition-colors" @click="showAddModal = true">
+              Add Candidate
+            </button>
+          </template>
+        </EmptyState>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <CandidateCard
+            v-for="candidate in candidates"
+            :key="candidate.id"
+            :candidate="candidate"
+            :is-analyzing="analyzingId === candidate.id"
+            @analyze="handleAnalyze"
+            @update-status="handleUpdateStatus"
+            @delete="confirmDeleteId = $event"
+            @view="handleViewCandidate"
+          />
+        </div>
+
+        <p v-if="candidates.length > 0" class="text-xs text-gray-500 text-center mt-4">
+          Showing {{ candidates.length }} of {{ total }} candidates
+        </p>
       </div>
     </div>
+
+    <AddCandidateModal v-if="showAddModal" @close="showAddModal = false" @submit="handleAddCandidate" />
+
+    <CvAnalysisPanel
+      v-if="showAnalysisPanel && selectedCandidate"
+      :candidate="selectedCandidate"
+      @close="showAnalysisPanel = false"
+    />
+
+    <ConfirmModal
+      v-if="confirmDeleteId"
+      title="Delete Candidate"
+      description="This will permanently remove the candidate and their analysis. This cannot be undone."
+      confirm-label="Delete"
+      @confirm="handleDelete"
+      @cancel="confirmDeleteId = null"
+    />
   </div>
 </template>

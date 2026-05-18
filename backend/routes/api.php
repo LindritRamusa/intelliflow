@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AutomationController;
+use App\Http\Controllers\CandidateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\WorkflowController;
@@ -37,4 +39,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/analytics/overview', [AnalyticsController::class, 'overview']);
     Route::get('/analytics/workflows', [AnalyticsController::class, 'workflows']);
     Route::get('/analytics/activity', [AnalyticsController::class, 'activity']);
+
+    // Recruitment
+    Route::get('/recruitment/stats', [CandidateController::class, 'stats']);
+    Route::apiResource('candidates', CandidateController::class);
+    Route::patch('/candidates/{candidate}/analysis', [CandidateController::class, 'saveAnalysis']);
+
+    // Knowledge Base
+    Route::get('/articles/categories', [ArticleController::class, 'categories']);
+    Route::apiResource('articles', ArticleController::class);
 });

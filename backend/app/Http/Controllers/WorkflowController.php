@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workflow;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -51,6 +52,14 @@ class WorkflowController extends Controller
             'status' => $validated['status'] ?? 'draft',
         ]);
 
+        if ($workflow->status === 'active') {
+            NotificationService::workflowActivated(
+                $request->user()->id,
+                $request->user()->organization_id,
+                $workflow->name
+            );
+        }
+
         return response()->json(['data' => $workflow->load('creator:id,name'), 'message' => 'Workflow created'], 201);
     }
 
@@ -90,9 +99,17 @@ class WorkflowController extends Controller
     {
         $this->authorizeOrg($workflow);
 
-        $workflow->update([
-            'status' => $workflow->status === 'active' ? 'paused' : 'active',
-        ]);
+        $newStatus = $workflow->status === 'active' ? 'paused' : 'active';
+        $workflow->update(['status' => $newStatus]);
+
+        $userId = auth()->id();
+        $orgId = auth()->user()?->organization_id;
+
+        if ($newStatus === 'active') {
+            NotificationService::workflowActivated($userId, $orgId, $workflow->name);
+        } else {
+            NotificationService::workflowPaused($userId, $orgId, $workflow->name);
+        }
 
         return response()->json(['data' => $workflow, 'message' => 'Workflow status updated']);
     }

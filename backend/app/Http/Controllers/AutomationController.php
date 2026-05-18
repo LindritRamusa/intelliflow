@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Automation;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -83,7 +84,15 @@ class AutomationController extends Controller
     {
         $this->authorizeOrg($automation);
 
-        $automation->update(['is_active' => !$automation->is_active]);
+        $newState = !$automation->is_active;
+        $automation->update(['is_active' => $newState]);
+
+        NotificationService::automationToggled(
+            auth()->id(),
+            auth()->user()?->organization_id,
+            $automation->name,
+            $newState
+        );
 
         return response()->json(['data' => $automation]);
     }

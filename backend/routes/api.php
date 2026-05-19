@@ -5,11 +5,16 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\ArticleController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AutomationController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CandidateController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\WorkflowController;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/billing/webhook', [BillingController::class, 'webhook']);
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -39,13 +44,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/analytics/overview', [AnalyticsController::class, 'overview']);
     Route::get('/analytics/workflows', [AnalyticsController::class, 'workflows']);
     Route::get('/analytics/activity', [AnalyticsController::class, 'activity']);
+    Route::get('/analytics/predictions', [AnalyticsController::class, 'predictions']);
 
-    // Recruitment
     Route::get('/recruitment/stats', [CandidateController::class, 'stats']);
     Route::apiResource('candidates', CandidateController::class);
     Route::patch('/candidates/{candidate}/analysis', [CandidateController::class, 'saveAnalysis']);
 
-    // Knowledge Base
     Route::get('/articles/categories', [ArticleController::class, 'categories']);
     Route::apiResource('articles', ArticleController::class);
+
+    Route::get('/logistics/stats', [LogisticsController::class, 'stats']);
+    Route::apiResource('shipments', LogisticsController::class);
+    Route::patch('/shipments/{shipment}/optimization', [LogisticsController::class, 'saveOptimization']);
+
+    Route::get('/organizations', [OrganizationController::class, 'index']);
+    Route::post('/organizations', [OrganizationController::class, 'store']);
+    Route::get('/organizations/current', [OrganizationController::class, 'current']);
+    Route::patch('/organizations/{organization}/switch', [OrganizationController::class, 'switch']);
+
+    Route::get('/billing/plans', [BillingController::class, 'plans']);
+    Route::post('/billing/checkout', [BillingController::class, 'checkout']);
+    Route::post('/billing/portal', [BillingController::class, 'portal']);
 });

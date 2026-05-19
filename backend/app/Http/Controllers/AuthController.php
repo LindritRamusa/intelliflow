@@ -36,6 +36,8 @@ class AuthController extends Controller
             'organization_id' => $org->id,
         ]);
 
+        $user->organizations()->attach($org->id, ['role' => 'company_admin']);
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([

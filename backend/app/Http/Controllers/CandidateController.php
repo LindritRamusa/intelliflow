@@ -11,7 +11,7 @@ class CandidateController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Candidate::where('organization_id', $request->user()->organization_id)
+        $query = Candidate::where('organization_id', $request->user()->activeOrgId())
             ->latest();
 
         if ($request->filled('status')) {
@@ -53,7 +53,7 @@ class CandidateController extends Controller
 
         $candidate = Candidate::create([
             ...$validated,
-            'organization_id' => $request->user()->organization_id,
+            'organization_id' => $request->user()->activeOrgId(),
             'status' => 'pending',
         ]);
 
@@ -135,7 +135,7 @@ class CandidateController extends Controller
 
     public function stats(Request $request): JsonResponse
     {
-        $orgId = $request->user()->organization_id;
+        $orgId = $request->user()->activeOrgId();
 
         return response()->json([
             'data' => [

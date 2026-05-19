@@ -12,7 +12,7 @@ class ArticleController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Article::where('organization_id', $request->user()->organization_id)
+        $query = Article::where('organization_id', $request->user()->activeOrgId())
             ->with('author:id,name')
             ->latest();
 
@@ -48,7 +48,7 @@ class ArticleController extends Controller
 
     public function categories(Request $request): JsonResponse
     {
-        $categories = Article::where('organization_id', $request->user()->organization_id)
+        $categories = Article::where('organization_id', $request->user()->activeOrgId())
             ->select('category')
             ->distinct()
             ->orderBy('category')
@@ -75,7 +75,7 @@ class ArticleController extends Controller
         }
 
         $article = Article::create([
-            'organization_id' => $request->user()->organization_id,
+            'organization_id' => $request->user()->activeOrgId(),
             'author_id' => $request->user()->id,
             'title' => $validated['title'],
             'slug' => $slug,

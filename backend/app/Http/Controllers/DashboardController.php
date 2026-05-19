@@ -12,7 +12,7 @@ class DashboardController extends Controller
 {
     public function stats(Request $request): JsonResponse
     {
-        $orgId = $request->user()->organization_id;
+        $orgId = $request->user()->activeOrgId();
 
         $workflowCount = Workflow::where('organization_id', $orgId)->count();
         $activeWorkflows = Workflow::where('organization_id', $orgId)->where('status', 'active')->count();

@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,6 +22,7 @@ class User extends Authenticatable
         'password',
         'role',
         'organization_id',
+        'active_organization_id',
         'avatar_url',
     ];
 
@@ -37,9 +39,30 @@ class User extends Authenticatable
         ];
     }
 
+    public function activeOrgId(): int
+    {
+        return $this->active_organization_id ?? $this->organization_id;
+    }
+
+    public function activeOrganization(): Organization|null
+    {
+        $id = $this->activeOrgId();
+        if ($id === $this->organization_id) {
+            return $this->organization;
+        }
+        return Organization::find($id);
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class, 'organization_users')
+            ->withPivot('role')
+            ->withTimestamps();
     }
 
     public function workflows(): HasMany

@@ -11,7 +11,7 @@ class WorkflowController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Workflow::where('organization_id', $request->user()->organization_id)
+        $query = Workflow::where('organization_id', $request->user()->activeOrgId())
             ->with('creator:id,name,avatar_url')
             ->latest();
 
@@ -47,7 +47,7 @@ class WorkflowController extends Controller
 
         $workflow = Workflow::create([
             ...$validated,
-            'organization_id' => $request->user()->organization_id,
+            'organization_id' => $request->user()->activeOrgId(),
             'created_by' => $request->user()->id,
             'status' => $validated['status'] ?? 'draft',
         ]);

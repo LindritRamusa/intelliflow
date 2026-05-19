@@ -11,7 +11,7 @@ class AutomationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $automations = Automation::where('organization_id', $request->user()->organization_id)
+        $automations = Automation::where('organization_id', $request->user()->activeOrgId())
             ->with('workflow:id,name,status')
             ->latest()
             ->paginate(20);
@@ -40,7 +40,7 @@ class AutomationController extends Controller
 
         $automation = Automation::create([
             ...$validated,
-            'organization_id' => $request->user()->organization_id,
+            'organization_id' => $request->user()->activeOrgId(),
             'status' => 'paused',
         ]);
 

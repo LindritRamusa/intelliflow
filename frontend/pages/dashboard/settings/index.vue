@@ -1,144 +1,212 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'dashboard', middleware: 'auth' })
+definePageMeta({ layout: 'dashboard' })
 
 const authStore = useAuthStore()
 const { logout } = useAuth()
+const { billing, isLoading: isBillingLoading, isRedirecting, error: billingError, statusLabel, fetchBilling, startCheckout, openPortal } = useSubscription()
+const { organizations, currentOrg, fetchOrganizations, createOrganization } = useOrganizations()
+
+const activeTab = ref('profile')
+const isSaving = ref(false)
+const newOrgName = ref('')
+const isCreatingOrg = ref(false)
+
+const tabs = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'organization', label: 'Organization' },
+  { key: 'billing', label: 'Billing' },
+]
 
 const profileForm = reactive({
   name: authStore.user?.name ?? '',
   email: authStore.user?.email ?? '',
 })
 
-const isSaving = ref(false)
-
 const handleSaveProfile = async () => {
   isSaving.value = true
-  await new Promise((r) => setTimeout(r, 800))
+  await new Promise(r => setTimeout(r, 600))
   isSaving.value = false
 }
 
-const tabs = ['Profile', 'Organization', 'API Keys', 'Notifications', 'Billing']
-const activeTab = ref('Profile')
+const handleCreateOrg = async () => {
+  if (!newOrgName.value.trim() || isCreatingOrg.value) return
+  isCreatingOrg.value = true
+  const result = await createOrganization(newOrgName.value.trim())
+  isCreatingOrg.value = false
+  if (result) {
+    newOrgName.value = ''
+    window.location.reload()
+  }
+}
+
+const billingSuccessMessage = ref('')
+const route = useRoute()
+
+onMounted(() => {
+  if (route.query.billing === 'success') {
+    billingSuccessMessage.value = 'Your subscription has been activated successfully!'
+    activeTab.value = 'billing'
+  }
+  fetchBilling()
+  fetchOrganizations()
+})
 </script>
 
 <template>
-  <div>
-    <PageHeader title="Settings" description="Manage your account and platform configuration" />
+  <div class="p-6 space-y-6">
+    <PageHeader title="Settings" description="Manage your profile, organization, and billing" />
 
-    <div class="flex gap-6">
-      <!-- Sidebar tabs -->
-      <div class="w-44 flex-shrink-0">
-        <nav class="space-y-0.5">
-          <button
-            v-for="tab in tabs"
-            :key="tab"
-            class="w-full text-left px-3 py-2 text-sm rounded-lg transition-colors font-medium"
-            :class="activeTab === tab ? 'bg-brand-600/15 text-brand-300' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-700'"
-            @click="activeTab = tab"
-          >
-            {{ tab }}
+    <div class="flex items-center gap-1 bg-[#141824] border border-white/[0.06] rounded-xl p-1 w-fit">
+      <button
+        v-for="tab in tabs"
+        :key="tab.key"
+        :class="['px-4 py-2 rounded-lg text-sm transition-colors', activeTab === tab.key ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white']"
+        @click="activeTab = tab.key"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <div v-if="activeTab === 'profile'" class="max-w-lg space-y-6">
+      <div class="bg-[#141824] border border-white/[0.06] rounded-xl p-6 space-y-4">
+        <h2 class="text-white font-medium">Profile</h2>
+
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white text-2xl font-bold">
+            {{ authStore.user?.name?.charAt(0)?.toUpperCase() }}
+          </div>
+          <div>
+            <p class="text-white font-medium">{{ authStore.user?.name }}</p>
+            <p class="text-gray-400 text-sm">{{ authStore.user?.email }}</p>
+            <span class="mt-1 inline-block px-2 py-0.5 bg-violet-500/15 border border-violet-500/20 rounded-full text-xs text-violet-400 capitalize">
+              {{ authStore.user?.role?.replace('_', ' ') }}
+            </span>
+          </div>
+        </div>
+
+        <form class="space-y-4 pt-2" @submit.prevent="handleSaveProfile">
+          <div>
+            <label class="block text-sm text-gray-300 mb-1.5">Full Name</label>
+            <input v-model="profileForm.name" type="text" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500/50 transition-colors" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-300 mb-1.5">Email</label>
+            <input v-model="profileForm.email" type="email" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500/50 transition-colors" />
+          </div>
+          <button type="submit" :disabled="isSaving" class="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors">
+            {{ isSaving ? 'Saving...' : 'Save Changes' }}
           </button>
-        </nav>
+        </form>
       </div>
 
-      <!-- Content -->
-      <div class="flex-1 min-w-0">
-        <!-- Profile -->
-        <template v-if="activeTab === 'Profile'">
-          <div class="card">
-            <h3 class="text-sm font-semibold text-white mb-4">Profile Settings</h3>
-            <form class="space-y-4 max-w-md" @submit.prevent="handleSaveProfile">
-              <!-- Avatar -->
-              <div class="flex items-center gap-4 mb-5">
-                <div class="h-16 w-16 rounded-full bg-brand-600/20 flex items-center justify-center border-2 border-brand-500/20">
-                  <span class="text-2xl font-bold text-brand-300">
-                    {{ authStore.user?.name?.charAt(0).toUpperCase() }}
-                  </span>
-                </div>
-                <div>
-                  <p class="text-sm font-medium text-slate-200">{{ authStore.user?.name }}</p>
-                  <p class="text-xs text-slate-500 capitalize">{{ authStore.user?.role?.replace('_', ' ') }}</p>
-                  <button type="button" class="text-xs text-brand-400 hover:text-brand-300 mt-1 transition-colors">
-                    Change avatar
-                  </button>
-                </div>
-              </div>
+      <div class="bg-[#141824] border border-red-500/10 rounded-xl p-6">
+        <h2 class="text-white font-medium mb-1">Danger Zone</h2>
+        <p class="text-gray-400 text-sm mb-4">This will log you out of your current session.</p>
+        <button
+          class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-red-400 text-sm font-medium transition-colors"
+          @click="logout()"
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
 
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
-                <input v-model="profileForm.name" type="text" class="input" />
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
-                <input v-model="profileForm.email" type="email" class="input" />
-              </div>
+    <div v-if="activeTab === 'organization'" class="max-w-2xl space-y-6">
+      <div class="bg-[#141824] border border-white/[0.06] rounded-xl p-6">
+        <h2 class="text-white font-medium mb-4">Your Organizations</h2>
 
-              <div class="flex items-center gap-2 pt-2">
-                <button type="submit" class="btn-primary text-xs" :disabled="isSaving">
-                  <LoadingSpinner v-if="isSaving" size="xs" />
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div class="card mt-4 border-red-500/20">
-            <h3 class="text-sm font-semibold text-white mb-1">Danger Zone</h3>
-            <p class="text-xs text-slate-500 mb-4">Irreversible account actions</p>
-            <button
-              class="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 font-medium transition-colors"
-              @click="logout()"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign out of all devices
-            </button>
-          </div>
-        </template>
-
-        <!-- Organization -->
-        <template v-else-if="activeTab === 'Organization'">
-          <div class="card">
-            <h3 class="text-sm font-semibold text-white mb-4">Organization Settings</h3>
-            <div class="space-y-3 max-w-md">
-              <div class="flex items-center justify-between py-3 border-b border-surface-600">
-                <span class="text-xs text-slate-400">Organization Name</span>
-                <span class="text-xs font-medium text-slate-200">{{ authStore.orgName }}</span>
-              </div>
-              <div class="flex items-center justify-between py-3 border-b border-surface-600">
-                <span class="text-xs text-slate-400">Current Plan</span>
-                <span class="badge-blue capitalize">{{ authStore.organization?.plan ?? 'starter' }}</span>
-              </div>
-              <div class="flex items-center justify-between py-3">
-                <span class="text-xs text-slate-400">Your Role</span>
-                <span class="text-xs font-medium text-slate-200 capitalize">{{ authStore.user?.role?.replace('_', ' ') }}</span>
-              </div>
+        <div class="space-y-3 mb-6">
+          <div
+            v-for="org in organizations"
+            :key="org.id"
+            class="flex items-center gap-3 p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl"
+          >
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+              {{ org.name.charAt(0).toUpperCase() }}
             </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-white font-medium text-sm truncate">{{ org.name }}</p>
+              <p class="text-gray-500 text-xs capitalize">{{ org.plan }} · {{ org.slug }}</p>
+            </div>
+            <span v-if="org.isActive" class="px-2 py-0.5 bg-violet-500/15 border border-violet-500/20 rounded-full text-xs text-violet-400">
+              Active
+            </span>
           </div>
-        </template>
+        </div>
 
-        <!-- API Keys -->
-        <template v-else-if="activeTab === 'API Keys'">
-          <div class="card">
-            <h3 class="text-sm font-semibold text-white mb-1">API Keys</h3>
-            <p class="text-xs text-slate-500 mb-4">Manage API keys for external integrations</p>
-            <EmptyState
-              icon="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-              title="No API keys yet"
-              description="Generate an API key to integrate IntelliFlow with external services"
-              action-label="Generate Key"
+        <div class="border-t border-white/[0.06] pt-5">
+          <h3 class="text-sm font-medium text-gray-300 mb-3">Create New Organization</h3>
+          <form class="flex gap-3" @submit.prevent="handleCreateOrg">
+            <input
+              v-model="newOrgName"
+              type="text"
+              class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500/50 transition-colors"
+              placeholder="Organization name"
             />
-          </div>
-        </template>
+            <button
+              type="submit"
+              :disabled="!newOrgName.trim() || isCreatingOrg"
+              class="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors whitespace-nowrap"
+            >
+              {{ isCreatingOrg ? 'Creating...' : 'Create' }}
+            </button>
+          </form>
+          <p class="text-xs text-gray-500 mt-2">You will become the admin of the new organization and it will be set as active.</p>
+        </div>
+      </div>
+    </div>
 
-        <!-- Billing placeholder -->
-        <template v-else>
-          <div class="card">
-            <h3 class="text-sm font-semibold text-white mb-1">{{ activeTab }}</h3>
-            <EmptyState title="Coming soon" description="This section is under development" />
-          </div>
-        </template>
+    <div v-if="activeTab === 'billing'" class="space-y-6">
+      <div v-if="billingSuccessMessage" class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-3">
+        <svg class="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <p class="text-emerald-400 text-sm">{{ billingSuccessMessage }}</p>
+      </div>
+
+      <div v-if="billingError" class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+        <p class="text-amber-400 text-sm">{{ billingError }}</p>
+      </div>
+
+      <div class="bg-[#141824] border border-white/[0.06] rounded-xl p-5 flex items-center justify-between gap-4">
+        <div>
+          <p class="text-gray-400 text-sm">Current plan</p>
+          <p class="text-white font-semibold text-lg capitalize mt-0.5">{{ billing?.currentPlan ?? 'Starter' }}</p>
+        </div>
+        <div class="text-right">
+          <span :class="['px-2.5 py-1 rounded-full text-xs font-medium', billing?.subscriptionStatus === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-gray-500/15 text-gray-400']">
+            {{ statusLabel }}
+          </span>
+          <p v-if="billing?.subscriptionEndsAt" class="text-xs text-gray-500 mt-1">
+            Renews {{ new Date(billing.subscriptionEndsAt).toLocaleDateString() }}
+          </p>
+        </div>
+      </div>
+
+      <LoadingSpinner v-if="isBillingLoading" class="py-8" />
+
+      <div v-else-if="billing" class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <PlanCard
+          v-for="plan in billing.plans"
+          :key="plan.key"
+          :plan="plan"
+          :is-redirecting="isRedirecting"
+          @select="startCheckout($event as 'professional' | 'enterprise')"
+        />
+      </div>
+
+      <div v-if="billing?.subscriptionStatus === 'active'" class="bg-[#141824] border border-white/[0.06] rounded-xl p-5 flex items-center justify-between gap-4">
+        <div>
+          <p class="text-white font-medium text-sm">Manage Subscription</p>
+          <p class="text-gray-400 text-xs mt-0.5">Update payment method, view invoices, or cancel subscription</p>
+        </div>
+        <button
+          :disabled="isRedirecting"
+          class="px-4 py-2 bg-white/5 hover:bg-white/[0.08] border border-white/10 rounded-lg text-sm text-gray-300 disabled:opacity-50 transition-colors whitespace-nowrap"
+          @click="openPortal()"
+        >
+          {{ isRedirecting ? 'Redirecting...' : 'Billing Portal' }}
+        </button>
       </div>
     </div>
   </div>

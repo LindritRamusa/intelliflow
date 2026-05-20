@@ -33,7 +33,7 @@ const handleSubmit = () => {
       <div class="flex items-center justify-between p-6 border-b border-white/[0.06]">
         <div>
           <h2 class="text-white font-semibold text-lg">New Shipment</h2>
-          <p class="text-gray-400 text-sm mt-0.5">Create a shipment for AI route optimization</p>
+          <p class="text-gray-300 text-sm mt-0.5">Create a shipment for AI route optimization</p>
         </div>
         <button class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors" @click="emit('close')">
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
